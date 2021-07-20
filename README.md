@@ -9,7 +9,7 @@ Automatic EMAIL alerts based on Ichimoku Clouds. For all markets, score (%) is t
  -  Tenkan Sen position with Kijun Sen (Under / Above)
  -  Chikou position with SSB (Under / Above)
 
-Score is then confirmed (or not) checking fake signals and contrary signals.
+Score is then confirmed (or not) checking fake signals and contrary signals. Score is ignored if alert was already sent with equal or inferior score.
 
 Note : Yahoo Finance Data is used in order to process Ichimoku Clouds.
 
@@ -59,4 +59,38 @@ Examples:
                 python3 ichimoku.py -m 'MSFT, CS.PA' -r 'myemail@test.com' -a 'myemail@gmail.com:mypassword'
 ```
 
-## Example
+## Examples
+### Example 1: Manual script execution on two markets, analysis on 1h interval, TXT output
+```bash
+# python3 ./ichimoku.py -m RPD,UNH -i 1h -o TXT
+SIGNALS 1h
+        - RPD : 100%
+
+SHORT :
+        - UNH : -83%
+```
+<p align="center" style="font-size: 1px;"><img align="center" src="/IMAGES/rpd.png?raw=true" height="300" /><br/><i>RPD BUY Signals</i></p>
+
+### Example 2: Manual script execution on market file, analysis on 1d interval, TXT output
+```bash
+# python3 ichimoku.py -f eu_stocks.txt -i 1d -o TXT
+SIGNALS 1d
+
+BUY :
+        - DHER_DE : 100%
+        - BN_PA : 83%
+
+SHORT :
+        - ELIS_PA : -100%
+        - RWE_DE : -100%
+        - SPIE_PA : -100%
+        - UBI_PA : -100%
+        - ^FCHI : -83%
+```
+<p align="center" style="font-size: 1px;"><img align="center" src="/IMAGES/rpd.png?raw=true" height="300" /><br/><i>ELIS.PA SHORT Signals</i></p>
+
+### Example 3: Crontab execution on market file, analysis on 1d interval, EMAIL output
+```bash
+30 16 * * 1-5 python3 /[DIR]/ichimoku.py -f /[DIR]/eu_stocks.txt -i 1d -t '[RECIPIENT_EMAIL]' -a '[SENDER_EMAIL]:[SENDER_TOKEN]' -o EMAIL
+```
+<p align="center" style="font-size: 1px;"><img align="center" src="/IMAGES/email.png?raw=true" height="300" /><br/><i>Email Output</i></p>
