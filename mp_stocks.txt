@@ -1,0 +1,6 @@
+HG=F
+SI=F
+GC=F
+CC=F
+CT=F
+SB=F

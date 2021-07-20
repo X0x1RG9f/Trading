@@ -1,0 +1,523 @@
+#!/usr/bin/python3
+# encoding: utf-8
+
+############################################
+#                                          #
+# /!\ PYTHON 3 ONLY                        #
+#                                          #
+# ICHIMOKU CLOUDS Ludovic COURGNAUD        #
+# 04-2020                                  #
+#                                          #
+# SENDS EMAILS FOR IMPORTANT EVENTS :      #
+#    - Price above cloud                   #
+#    - Price under cloud                   #
+#    - Kijunsen Cross Tenkansen            #
+#    - Kijunsen Cross Price                #
+#                                          #
+############################################
+
+###################################################### IMPORTS #####################################################################
+import requests
+import pandas as pd
+import os
+import string
+import sys
+import urllib
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+import argparse
+from datetime import datetime
+import numpy as np
+import json
+import time
+
+###################################################### CONFIG ######################################################################
+FILE 			= ""
+INTERVAL		= ""
+RANGE 			= ""
+DEBUG			= False
+RECIPIENTS		= ""
+SMTP_SERVER		= ""
+SMTP_PORT		= ""
+SMTP_AUTH		= ""
+OUTPUT			= ""
+TMP_FILE		= False
+#CLOUD_ONLY		= False
+#CHECK_SS26		= False
+
+##################################################### FUNCTIONS ####################################################################
+
+#
+# Print with debug condition
+#
+def myprint(str):
+	if DEBUG:
+		print(str)
+
+#
+# Parse args from command line
+#
+def parse_args():
+	global INTERVAL
+	global FILE
+	global DEBUG
+	global RANGE
+	global RECIPIENTS
+	global SMTP_SERVER
+	global SMTP_AUTH
+	global SMTP_PORT
+	global OUTPUT
+	global TMP_FILE
+#	global CLOUD_ONLY
+#	global CHECK_SS26
+
+	example_text = '''Examples:
+ 		python3 ichimoku.py -m MSFT -i 15m --txt
+ 		python3 ichimoku.py -f ./markets.txt --html --debug
+ 		python3 ichimoku.py -m 'MSFT, CS.PA' -r 'myemail@test.com' -a 'myemail@gmail.com:mypassword' '''
+
+	parser = argparse.ArgumentParser(prog='./ichimoku.py', epilog=example_text,  formatter_class=argparse.RawDescriptionHelpFormatter)
+
+	# Mandatory args
+	# None
+
+	# Optional args
+	parser.add_argument("-f", "--markets-file", type=str, help="Input file containing markets to follow (one per line).")
+	parser.add_argument("-m", "--markets", type=str, help="Input string containing markets to follow (comma separated). Default 'MSFT, NFLX'.", default="MSFT, NFLX")
+	parser.add_argument("-i", "--interval",  type=str, help="Interval of stock data to process. Default '1h'.", choices=['15m', '30m', '1h', '1d', '1wk'], default="1h")
+	parser.add_argument("-s", "--smtp-server", type=str, help="SMTP Server from which notification will be sent. Default 'smtp.gmail.com'", default='smtp.gmail.com')
+	parser.add_argument("-p", "--smtp-port", type=int, help="SMTP Server port from which notification will be sent. Default '587'.", default=587)
+	parser.add_argument("-a", "--smtp-auth", type=str, help="SMTP Server credentials (login:password).")
+	parser.add_argument("-r", "--recipients", type=str, help="Email recipient(s) for notification ('a@a.com, b@b.com').")
+#	parser.add_argument("-c", "--cloud-only", help="Only check for cloud signals.", action="store_true", default=False)
+#	parser.add_argument("-ss", "--check-ss26", help="Check SSA & SSB +26 values.", action="store_true", default=False)
+	parser.add_argument("-d", "--debug", help="Activate debug mode. Default 'False'.",  action='store_true', default=False)
+	parser.add_argument("-ht", "--html", help="HTML return mode.",  action='store_true', default=False)
+	parser.add_argument("-t", "--txt", help="TXT return mode.",  action='store_true', default=False)
+
+	args = parser.parse_args()
+
+	FILE 		= args.markets_file
+	INTERVAL	= args.interval
+	DEBUG		= args.debug
+#	CLOUD_ONLY 	= args.cloud_only
+#	CHECK_SS26 	= args.check_ss26
+	RECIPIENTS	= args.recipients
+	SMTP_SERVER	= args.smtp_server
+	SMTP_PORT	= args.smtp_port
+	RANGE		= "1mo"
+
+	if (args.smtp_auth != None) :
+		SMTP_AUTH	= args.smtp_auth.split(":")
+
+	if (INTERVAL == "1d"):
+		RANGE = "6mo"
+
+	if (INTERVAL == "1wk"):
+		RANGE = "2y"
+
+	if (FILE == None) and (args.markets == "MSFT, NFLX"):
+		myprint("WARNING: At least input string or file should be provided as argument. Default markets string will be used.")
+		np.savetxt("mytmpmarkets.txt", [x.strip(' ') for x in args.markets.split(",")], fmt="%s")
+		FILE = "./mytmpmarkets.txt"
+		TMP_FILE = True
+
+
+	if (args.markets_file != None):
+		if not os.path.isfile(args.markets_file):
+			myprint("WARNING: File '" + FILE + "' not found. Market string will be used!")
+			np.savetxt("mytmpmarkets.txt", [x.strip(' ') for x in args.markets.split(",")], fmt="%s")
+			FILE = "./mytmpmarkets.txt"
+			TMP_FILE = True
+	else:
+		np.savetxt("mytmpmarkets.txt", [x.strip(' ') for x in args.markets.split(",")], fmt="%s")
+		FILE = "./mytmpmarkets.txt"
+		TMP_FILE = True
+
+
+	if (args.txt == False) and (args.html == False) and (RECIPIENTS == None) and (SMTP_AUTH == None) :
+		myprint("WARNING: No output specified, no recipient specified. Defaulting to TXT output")
+		OUTPUT = "TXT"
+	else:
+		if (RECIPIENTS != None) and (SMTP_AUTH != None):
+			OUTPUT = "EMAIL"
+		else:
+			if (args.html == True):
+				OUTPUT = "HTML"
+			else:
+				OUTPUT = "TXT"
+
+	myprint("INFO: OUTPUTING AS " + OUTPUT + "!")
+	myprint("")
+
+
+
+#
+# Retrieve data from Yahoo Finance & return DataFrame
+#
+def get_quote_data(symbol, iteration):
+
+	res = requests.get('https://query1.finance.yahoo.com/v8/finance/chart/' + symbol + '?range=' + RANGE + '&interval=' + INTERVAL)
+	data = res.json()
+	myprint("SYMBOL: " + symbol)
+
+	if (data['chart']['result'] == None):
+		myprint("ERROR: Market name '" + symbol + "' unknown! Passing...")
+		return None
+
+	body = data['chart']['result'][0]
+	df = pd.DataFrame(body['indicators']['quote'][0])
+	df['timestamp'] = body['timestamp']
+
+	df['KIJUNSEN'] 		= ""
+	df['TENKANSEN'] 	= ""
+	df['SSA']		= ""
+	df['SSB'] 		= ""
+
+	df['CLOUD_COLOR']	= ""
+	df['CLOUD_TREND']	= ""
+
+	df['SIGNAL_X_PRC_CLD']	= ""
+	df['SIGNAL_X_KIJ_TEN']	= ""
+	df['SIGNAL_X_KIJ_PRC']	= ""
+	df['SIGNAL_X_CHI_PRC']	= ""
+	df['SIGNAL_X_CHI_SSB']	= ""
+	df['SIGNAL_SS26']	= ""
+
+	pd.options.mode.chained_assignment = None
+
+	for i in range (df.index[-1] - 60, df.index[-1] + 1):
+		if np.isnan(df['open'][i]) :
+			if (iteration < 5):
+				time.sleep(5)
+				return get_quote_data(symbol, iteration + 1)
+			else:
+				myprint("WARNING: Market name '" + symbol + "' has too many Null values for processing. Maybe errors...")
+				df.dropna(inplace=True)
+				df.reset_index(drop=True, inplace=True)
+				return df
+
+	df.dropna(inplace=True)
+	df.reset_index(drop=True, inplace=True)
+	return df.dropna()
+
+
+#
+# Sends Email to recipients
+#
+def send_email(msg):
+	sender = "Trading Server"
+
+	message = MIMEMultipart("alternative")
+	message["Subject"] = "Trading Opportunities (" +  str(datetime.now()) + ") !"
+	message["From"] = "Trading Server"
+	message["To"] = RECIPIENTS
+
+	message.attach(MIMEText(msg,"html"))
+
+	server = smtplib.SMTP(SMTP_SERVER, SMTP_PORT)
+	server.ehlo()
+	server.starttls()
+	server.ehlo()
+	server.login(SMTP_AUTH[0], SMTP_AUTH[1])
+	server.sendmail( sender, RECIPIENTS, message.as_string() )
+
+
+
+#
+# Process Ichimoku Cloud data from received Yahoo DataFrame 
+#
+def processIchimoku(df):
+
+	# KIJUN SEN & TENKAN SEN
+	for i in range (df.index[-1] - 70, df.index[-1] + 1):
+		df['KIJUNSEN'][i]	= (np.max(df['high'][i-25:i+1]) + np.min(df['low'][i-25:i+1]) ) / 2
+		df['TENKANSEN'][i]	= (np.max(df['high'][i-8:i+1])  + np.min(df['low'][i-8:i+1])  ) / 2
+
+	# SENKOU SPAN A (SSA) & SENKOU SPAN B (SSB)
+	for i in range (df.index[-1] - 70, df.index[-1] + 1 ):
+		df['SSA'][i+26] 	= (df['KIJUNSEN'][i] + df['TENKANSEN'][i]) / 2
+		df['SSB'][i+26] 	= (np.max(df['high'][i-51:i+1])  + np.min(df['low'][i-51:i+1])  ) / 2
+
+		# Cloud is green or red ?
+		if ( df['SSA'][i+26] >= df['SSB'][i+26] ):	df['CLOUD_COLOR'][i+26] = "GREEN"
+		if ( df['SSA'][i+26] <  df['SSB'][i+26] ):	df['CLOUD_COLOR'][i+26] = "RED"
+
+
+	# CHECKS : Chikou cross cloud
+#	for i in range (df.index[-1] - 60, df.index[-1] - 53):
+#		if (df['SSB'][i+26] >= df['CHIKOU'][i+26]) and (df['SSB'][i+27] < df['CHIKOU'][i+27]) :
+#			df['CROSS_CHI_SSB'][i+27] = "UP"
+#			df['CROSS_CHI_SSB'][df.index[-1]] = "UP"
+#		if (df['SSB'][i+26] <= df['CHIKOU'][i+26]) and (df['SSB'][i+27] > df['CHIKOU'][i+27]) :
+#			df['CROSS_CHI_SSB'][i+27] = "DOWN"
+#			df['CROSS_CHI_SSB'][df.index[-1]] = "DOWN"
+
+	# PROCESS : Price cross cloud,  KJ cross TK, KJ cross price, Chikou cross price, Chikou cross SSB
+	for i in range (df.index[-1] - 10, df.index[-1] + 1):
+
+		# Are we in a bullish (buy) or in a bearish trend (sell) ?
+		if ( (df['open'][i] <= df['SSA'][i]) and (df['close'][i] <= df['SSA'][i]) and (df['open'][i] <= df['SSB'][i]) and (df['close'][i] <= df['SSB'][i]) ):	df['CLOUD_TREND'][i] = 'SELL'
+		if ( (df['open'][i] >= df['SSA'][i]) and (df['close'][i] >= df['SSA'][i]) and (df['open'][i] >= df['SSB'][i]) and (df['close'][i] >= df['SSB'][i]) ):	df['CLOUD_TREND'][i] = 'BUY'
+
+		# Do we have a cloud signal (price going above or under) ?
+		if ( (df['CLOUD_TREND'][i] == 'SELL') and (df['CLOUD_TREND'][i-1] != 'SELL') and (not np.isnan(df['open'][i-1])) ): df['SIGNAL_X_PRC_CLD'][i] = 'SELL'
+		if ( (df['CLOUD_TREND'][i] == 'BUY' ) and (df['CLOUD_TREND'][i-1] != 'BUY' ) and (not np.isnan(df['open'][i-1])) ): df['SIGNAL_X_PRC_CLD'][i] = 'BUY'
+
+		# Is Kijunsen crossing Tenkansen ? From above or not ? In a bullish trend or not ?
+		if ( (df['CLOUD_TREND'][i] != 'BUY' ) and (df['KIJUNSEN'][i-1] <= df['TENKANSEN'][i-1]) and (df['KIJUNSEN'][i] > df['TENKANSEN'][i]) and (not np.isnan(df['open'][i-1])) ): df['SIGNAL_X_KIJ_TEN'][i] = 'SELL'
+		if ( (df['CLOUD_TREND'][i] != 'BUY' ) and (df['KIJUNSEN'][i-1] >= df['TENKANSEN'][i-1]) and (df['KIJUNSEN'][i] < df['TENKANSEN'][i]) and (not np.isnan(df['open'][i-1])) ): df['SIGNAL_X_KIJ_TEN'][i] = 'CLOSE/BUY'
+		if ( (df['CLOUD_TREND'][i] != 'SELL') and (df['KIJUNSEN'][i-1] <= df['TENKANSEN'][i-1]) and (df['KIJUNSEN'][i] > df['TENKANSEN'][i]) and (not np.isnan(df['open'][i-1])) ): df['SIGNAL_X_KIJ_TEN'][i] = 'CLOSE/SELL'
+		if ( (df['CLOUD_TREND'][i] != 'SELL') and (df['KIJUNSEN'][i-1] >= df['TENKANSEN'][i-1]) and (df['KIJUNSEN'][i] < df['TENKANSEN'][i]) and (not np.isnan(df['open'][i-1])) ): df['SIGNAL_X_KIJ_TEN'][i] = 'BUY'
+
+		# Is Kijunsen crossing price ? From above or not ? In a bullish trend or not ?
+		if ( (df['CLOUD_TREND'][i] != 'SELL') and (not np.isnan(df['open'][i-1])) and (df['close'][i-1] >= df['close'][i]) and ( (df['KIJUNSEN'][i-1] >= df['close'][i-1] and df['KIJUNSEN'][i] <= df['close'][i])  or (df['KIJUNSEN'][i-1] <= df['close'][i-1] and df['KIJUNSEN'][i] >= df['close'][i]) ) ):	df['SIGNAL_X_KIJ_PRC'][i] = 'CLOSE/SELL'
+		if ( (df['CLOUD_TREND'][i] != 'SELL') and (not np.isnan(df['open'][i-1])) and (df['close'][i-1] <  df['close'][i]) and ( (df['KIJUNSEN'][i-1] >= df['close'][i-1] and df['KIJUNSEN'][i] <= df['close'][i])  or (df['KIJUNSEN'][i-1] <= df['close'][i-1] and df['KIJUNSEN'][i] >= df['close'][i]) ) ):	df['SIGNAL_X_KIJ_PRC'][i] = 'BUY'
+		if ( (df['CLOUD_TREND'][i] != 'BUY' ) and (not np.isnan(df['open'][i-1])) and (df['close'][i-1] <= df['close'][i]) and ( (df['KIJUNSEN'][i-1] >= df['close'][i-1] and df['KIJUNSEN'][i] <= df['close'][i])  or (df['KIJUNSEN'][i-1] <= df['close'][i-1] and df['KIJUNSEN'][i] >= df['close'][i]) ) ):	df['SIGNAL_X_KIJ_PRC'][i] = 'CLOSE/BUY'
+		if ( (df['CLOUD_TREND'][i] != 'BUY' ) and (not np.isnan(df['open'][i-1])) and (df['close'][i-1] >  df['close'][i]) and ( (df['KIJUNSEN'][i-1] >= df['close'][i-1] and df['KIJUNSEN'][i] <= df['close'][i])  or (df['KIJUNSEN'][i-1] <= df['close'][i-1] and df['KIJUNSEN'][i] >= df['close'][i]) ) ):	df['SIGNAL_X_KIJ_PRC'][i] = 'SELL'
+
+		# Is Chikou crossing SSB ?
+		if (df['SSB'][i-27] >= df['close'][i-1]) and (df['SSB'][i-26] < df['close'][i]) :
+			df['SIGNAL_X_CHI_SSB'][i] = "BUY"
+		if (df['SSB'][i-27] <= df['close'][i-1]) and (df['SSB'][i-26] > df['close'][i]) :
+			df['SIGNAL_X_CHI_SSB'][i] = "SELL"
+
+		# Is Chikou crossing price ?
+		if (df['close'][i-27] >= df['close'][i-1]) and (df['close'][i-26] < df['close'][i]) :
+			df['SIGNAL_X_CHI_PRC'][i] = "BUY"
+		if (df['close'][i-27] <= df['close'][i-1]) and (df['close'][i-26] > df['close'][i]) :
+			df['SIGNAL_X_CHI_PRC'][i] = "SELL"
+
+		# Is Cloud +26 Red/Green ? Is SSA +26 Going down/up ?
+		if ( (df['CLOUD_COLOR'][i+26] == "GREEN") and (df['SSA'][i+25] < df['SSA'][i+26]) ):
+			df['SIGNAL_SS26'][i] = "BUY"
+		if ( (df['CLOUD_COLOR'][i+26] == "RED") and (df['SSA'][i+25] > df['SSA'][i+26]) ):
+			df['SIGNAL_SS26'][i] = "SELL"
+	#pd.set_option('display.max_rows', None)
+	myprint(df)
+
+
+	return df
+
+
+
+#
+# Main function
+#
+def main():
+	if (OUTPUT == "TXT"):
+		MSG		= ""
+		BUY_MSG		= "BUY :\n"
+		SELL_MSG 	= "SELL :\n"
+		CLOSE_MSG	= "CLOSE :\n"
+	else :
+		MSG		= "<html><body>"
+		BUY_MSG		= "<span style='color:green'><b>BUY :</b></span><br/><ul>"
+		SELL_MSG 	= "<span style='color:red'><b>SELL :</b></span><br/><ul>"
+		CLOSE_MSG	= "<span style='color:orange'><b>CLOSE :</b></span><br/><ul>"
+
+	# For each market, retrieve, process and write in email
+	with open(FILE) as f:
+		for line in f:
+			table_name = line.rstrip().replace(".","_").replace("-","_").replace("/","_")
+			df = get_quote_data(line.rstrip(),1)
+
+			if (df is None):
+				continue
+
+			df = processIchimoku(df)
+
+			buy_signals  = 0
+			sell_signals = 0
+			ss_signals   = ""
+
+			for i in range (df.index[-1] - 2, df.index[-1] + 1):
+				if ("BUY" in df['SIGNAL_X_PRC_CLD'][i]):
+					buy_signals += 1
+				if ("SELL" in df['SIGNAL_X_PRC_CLD'][i]):
+					sell_signals += 1
+
+				if ("BUY" in df['SIGNAL_X_KIJ_TEN'][i]):
+					buy_signals += 1
+				if ("SELL" in df['SIGNAL_X_KIJ_TEN'][i]):
+					sell_signals += 1
+
+				if ("BUY" in df['SIGNAL_X_KIJ_PRC'][i]):
+					buy_signals += 1
+				if ("SELL" in df['SIGNAL_X_KIJ_PRC'][i]):
+					sell_signals += 1
+
+				if ("BUY" in df['SIGNAL_X_CHI_PRC'][i]):
+					buy_signals += 1
+				if ("SELL" in df['SIGNAL_X_CHI_PRC'][i]):
+					sell_signals += 1
+
+				if ("BUY" in df['SIGNAL_X_CHI_SSB'][i]):
+					buy_signals += 1
+				if ("SELL" in df['SIGNAL_X_CHI_SSB'][i]):
+					sell_signals += 1
+
+
+			if (df['SIGNAL_SS26'][df.index[-1]] == "BUY"):
+				 buy_signals += 1
+			if (df['SIGNAL_SS26'][df.index[-1]] == "SELL"):
+				 sell_signals += 1
+
+			buy_percent  = 0
+			sell_percent = 0
+			if (buy_signals > 0) or (sell_signals > 0):
+				buy_percent  = (buy_signals * 100)  / (buy_signals + sell_signals)
+				sell_percent = (sell_signals * 100) / (buy_signals + sell_signals)
+
+			if (buy_signals >= 2) and (buy_percent >= 70):
+				if (OUTPUT == "TXT"):
+					BUY_MSG = BUY_MSG + "\t- " + table_name + " (" + INTERVAL + ") : " + str(int(buy_percent)) + "%, " + str(buy_signals) + "/" + str(buy_signals + sell_signals) + "\n"
+				else:
+					BUY_MSG = BUY_MSG + "<li><span style='color:green'><b>" + table_name + " (" + INTERVAL + ") : " + str(int(buy_percent)) + "%, " + str(buy_signals) + "/" + str(buy_signals + sell_signals) + "</b></span></li>"
+
+
+			if (sell_signals >= 2) and (sell_percent >= 70):
+				if (OUTPUT == "TXT"):
+					SELL_MSG = SELL_MSG + "\t- " + table_name + " (" + INTERVAL + ") : " + str(int(sell_percent)) + "%, " + str(sell_signals) + "/" + str(buy_signals + sell_signals) + "\n"
+				else:
+					SELL_MSG = SELL_MSG + "<li><span style='color:red'><b>" + table_name + " (" + INTERVAL + ") : " + str(int(sell_percent)) + "%, " + str(sell_signals) + "/" + str(buy_signals + sell_signals) + "</b></span></li>"
+
+	if (OUTPUT != "TXT"):
+		if (len(BUY_MSG) > 60):
+			MSG = MSG + BUY_MSG + "</ul><br/>"
+		if (len(SELL_MSG) > 60):
+			MSG = MSG + SELL_MSG + "</ul><br/>"
+		if (len(CLOSE_MSG) > 60):
+			MSG = MSG + CLOSE_MSG + "</ul><br/>"
+	else:
+		if (len(BUY_MSG) > 10):
+			MSG = MSG + BUY_MSG + "\n"
+		if (len(SELL_MSG) > 10):
+			MSG = MSG + SELL_MSG + "\n"
+		if (len(CLOSE_MSG) > 10):
+			MSG = MSG + CLOSE_MSG + "\n"
+
+	if (len(MSG) > 60) and (OUTPUT == "EMAIL"):
+		send_email(MSG + "</body></html>")
+
+	if (len(MSG) > 60) and (OUTPUT == "HTML"):
+		print(MSG)
+
+	if (len(MSG) > 20) and (OUTPUT == "TXT"):
+		print(MSG)
+
+
+	return
+
+			pandc = df['PRICE_AND_CLOUD'][df.index[-1] - 1]
+			csign = df['CLOUD_SIGNAL'][df.index[-1] - 1]
+			chikou= df['CROSS_CHI_SSB'][df.index[-1]]
+
+			if not CLOUD_ONLY :
+				ckprc = df['CROSS_KIJ_PRICE'][df.index[-1] - 1]
+				ckjtn = df['CROSS_KIJ_TEN'][df.index[-1] - 1]
+
+			#if (df['PRICE_AND_CLOUD'][df.index[-1]] != ""):
+			#	pandc = df['PRICE_AND_CLOUD'][df.index[-1]]
+			#if (df['CLOUD_SIGNAL'][df.index[-1]] != ""):
+			#	csign = df['CLOUD_SIGNAL'][df.index[-1]]
+			#if (df['CROSS_KIJ_PRICE'][df.index[-1]] != ""):
+			#	ckprc = df['CROSS_KIJ_PRICE'][df.index[-1]]
+			#if (df['CROSS_KIJ_TEN'][df.index[-1]] != ""):
+			#	ckjtn = df['CROSS_KIJ_TEN'][df.index[-1]]
+
+			if ( int(df['volume'][df.index[-1]])  != 0 ):
+				pandc = df['CLOUD_TREND'][df.index[-1]]
+				csign = df['SIGNAL_X_PRC_CLD'][df.index[-1]]
+
+				if not False:
+					ckprc = df['SIGNAL_X_KIJ_PRC'][df.index[-1]]
+					ckjtn = df['CROSS_KIJ_TEN'][df.index[-1]]
+
+
+			if (pandc != ""):
+				if (csign != "") :
+					if (csign == "BUY"):
+#						if ( ((CHECK_SS26 == False) or ((CHECK_SS26 == True) and (df['SSA'][df.index[-1] + 26] >= df['SSB'][df.index[-1] + 26]))) and (chikou == "UP") ):
+						if ( (df['SSA'][df.index[-1] + 26] >= df['SSB'][df.index[-1] + 26]) and (chikou == "UP") ):
+							if (OUTPUT == "TXT"):
+								BUY_MSG = BUY_MSG + "\t- " + table_name + " (" + INTERVAL + ") : " + "CLOUD SIGNAL\n"
+							else:
+								BUY_MSG = BUY_MSG + "<li><span style='color:green'><b>" + table_name + " (" + INTERVAL + ") : " + "CLOUD SIGNAL </b></span></li>"
+					else:
+#						if ( ((CHECK_SS26 == False) or ((CHECK_SS26 == True) and (df['SSA'][df.index[-1] + 26] <= df['SSB'][df.index[-1] + 26]))) and (chikou == "DOWN") ):
+						if ( (df['SSA'][df.index[-1] + 26] <= df['SSB'][df.index[-1] + 26]) and (chikou == "DOWN") ):
+							if (OUTPUT == "TXT"):
+								SELL_MSG = SELL_MSG + "\t- " + table_name + " (" + INTERVAL + ") : " + "CLOUD SIGNAL\n"
+							else:
+								SELL_MSG = SELL_MSG + "<li><span style='color:red'><b>" + table_name + " (" + INTERVAL + ") : " + "CLOUD SIGNAL</b></span></li>"
+#			if not CLOUD_ONLY:
+			if not False:
+				if (ckprc != "") :
+					if (ckprc == "BUY"):
+						if (OUTPUT == "TXT"):
+							BUY_MSG = BUY_MSG + "\t- " + table_name + " (" + INTERVAL + ") : " + "KS X PRICE\n"
+						else:
+							BUY_MSG = BUY_MSG + "<li><span style='color:green'>" + table_name + " (" + INTERVAL + ") : " + "KS X PRICE</span></li>"
+					else:
+						if (ckprc == "SELL"):
+							if (OUTPUT == "TXT"):
+								SELL_MSG = SELL_MSG + "\t- " + table_name + " (" + INTERVAL + ") : " + "KS X PRICE\n"
+							else:
+								SELL_MSG = SELL_MSG + "<li><span style='color:red'>" + table_name + " (" + INTERVAL + ") : " + "KS X PRICE</span></li>"
+						else:
+							if (OUTPUT == "TXT"):
+								CLOSE_MSG = CLOSE_MSG + "\t- " + table_name + " (" + INTERVAL + ") : " + "KS X PRICE\n"
+							else:
+								CLOSE_MSG = CLOSE_MSG + "<li><span style='color:orange'>" + table_name + " (" + INTERVAL + ") : " + "KS X PRICE</span></li>"
+
+				if (ckjtn != "") :
+					if (ckjtn == "BUY"):
+						if (OUTPUT == "TXT"):
+							BUY_MSG = BUY_MSG + "\t- " + table_name + " (" + INTERVAL + ") : " + "KS X TS\n"
+						else:
+							BUY_MSG = BUY_MSG + "<li><span style='color:green'>" + table_name + " (" + INTERVAL + ") : " + "KS X TS</span></li>"
+					else:
+						if (ckjtn == "SELL"):
+							if (OUTPUT == "TXT"):
+								SELL_MSG = SELL_MSG + "\t- " + table_name + " (" + INTERVAL + ") : " + "KS X TS\n"
+							else:
+								SELL_MSG = SELL_MSG + "<li><span style='color:red'>" + table_name + " (" + INTERVAL + ") : " + "KS X TS</span></li>"
+						else:
+							if (OUTPUT == "TXT"):
+								CLOSE_MSG = CLOSE_MSG + "\t- " + table_name + " (" + INTERVAL + ") : " + "KS X TS\n"
+							else:
+								CLOSE_MSG = CLOSE_MSG + "<li><span style='color:orange'>" + table_name + " (" + INTERVAL + ") : " + "KS X TS</span></li>"
+	if (OUTPUT != "TXT"):
+		if (len(BUY_MSG) > 60):
+			MSG = MSG + BUY_MSG + "</ul><br/>"
+		if (len(SELL_MSG) > 60):
+			MSG = MSG + SELL_MSG + "</ul><br/>"
+		if (len(CLOSE_MSG) > 60):
+			MSG = MSG + CLOSE_MSG + "</ul><br/>"
+	else:
+		if (len(BUY_MSG) > 10):
+			MSG = MSG + BUY_MSG + "\n"
+		if (len(SELL_MSG) > 10):
+			MSG = MSG + SELL_MSG + "\n"
+		if (len(CLOSE_MSG) > 10):
+			MSG = MSG + CLOSE_MSG + "\n"
+
+	if (len(MSG) > 60) and (OUTPUT == "EMAIL"):
+		send_email(MSG + "</body></html>")
+
+	if (len(MSG) > 60) and (OUTPUT == "HTML"):
+		print(MSG)
+
+	if (len(MSG) > 20) and (OUTPUT == "TXT"):
+		print(MSG)
+
+
+################################################### START PROGRAM ##################################################################
+parse_args()
+main()
+
+if (TMP_FILE == True):
+	os.remove("mytmpmarkets.txt")
+
