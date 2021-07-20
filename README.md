@@ -1,2 +1,62 @@
-# trading
-Trading alerts using Ichimoku Clouds indicator
+# Trading alerts using Ichimoku Clouds indicator
+
+## Description
+Automatic EMAIL alerts based on Ichimoku Clouds. For all markets, score (%) is then processed, based on the following conditions:
+ -  Price position with Cloud (Under / Above)
+ -  Price position with Kijun Sen (Under / Above)
+ -  Price position with Chikou (Under / Above)
+ -  Chikou position with Kijun Sen (Under / Above)
+ -  Tenkan Sen position with Kijun Sen (Under / Above)
+ -  Chikou position with SSB (Under / Above)
+
+Score is then confirmed (or not) checking fake signals and contrary signals.
+
+Note : Yahoo Finance Data is used in order to process Ichimoku Clouds.
+
+## Usage
+```python
+usage: ./ichimoku.py [-h] [-f MARKETS_FILE] [-m MARKETS] [-i {30m,1h,4h,1d}]
+                     [-c {9,26,52,7,22,44}] [-d] [-o {TXT,EMAIL,HTML}]
+                     [-r REMOVE_VALUES] [-n] [-x] [-s SMTP_SERVER]
+                     [-p SMTP_PORT] [-a SMTP_AUTH] [-t TO]
+
+optional arguments:
+  -h, --help            show this help message and exit
+  -f MARKETS_FILE, --markets-file MARKETS_FILE
+                        Input file containing markets to follow (one per
+                        line).
+  -m MARKETS, --markets MARKETS
+                        Input string containing markets to follow (comma
+                        separated).
+  -i {30m,1h,4h,1d}, --interval {30m,1h,4h,1d}
+                        Interval of stock data to process. Default '1h'.
+  -c {9,26,52,7,22,44}, --config {9,26,52,7,22,44}
+                        Ichimoku settings. Default '9,26,52'.
+  -d, --debug           Activate debug mode. Default 'False'.
+  -o {TXT,EMAIL,HTML}, --output {TXT,EMAIL,HTML}
+                        Results output mode.
+  -r REMOVE_VALUES, --remove-values REMOVE_VALUES
+                        Number of values to be removed. Use for past analasys
+                        only. Default 0.
+  -n, --check-null      Perform second stock request if many null values.
+                        Default 'False'.
+  -x, --cloud-only      Process only scores for Cloud Signals (Up / Above).
+                        Default 'False'.
+  -s SMTP_SERVER, --smtp-server SMTP_SERVER
+                        SMTP Server from which notification will be sent.
+                        Default 'smtp.gmail.com'
+  -p SMTP_PORT, --smtp-port SMTP_PORT
+                        SMTP Server port from which notification will be sent.
+                        Default '587'.
+  -a SMTP_AUTH, --smtp-auth SMTP_AUTH
+                        SMTP Server credentials (login:password).
+  -t TO, --to TO        Email recipient(s) for notification ('a@a.com,
+                        b@b.com').
+
+Examples:
+                python3 ichimoku.py -m MSFT -i 15m --txt
+                python3 ichimoku.py -f ./markets.txt --html --debug
+                python3 ichimoku.py -m 'MSFT, CS.PA' -r 'myemail@test.com' -a 'myemail@gmail.com:mypassword'
+```
+
+## Example
