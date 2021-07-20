@@ -89,7 +89,7 @@ SHORT :
         - UBI_PA : -100%
         - ^FCHI : -83%
 ```
-<p align="center" style="font-size: 1px;"><img align="center" src="/IMAGES/rpd.png?raw=true" height="300" /><br/><i>ELIS.PA SHORT Signals</i></p>
+<p align="center" style="font-size: 1px;"><img align="center" src="/IMAGES/elis.png?raw=true" height="300" /><br/><i>ELIS.PA SHORT Signals</i></p>
 
 ### Example 3: Crontab execution on market file, analysis on 1d interval, EMAIL output
 ```bash
