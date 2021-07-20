@@ -574,16 +574,16 @@ def write_email(scores, closes):
 
 	if (OUTPUT == "TXT"):
 		MSG		= "SIGNALS " + INTERVAL + "\n\n"
-		BUY_MSG		= "BUY :\n"
-		SELL_MSG 	= "SELL :\n"
-		CLSEB_MSG 	= "CLOSE BUY :\n"
-		CLSES_MSG 	= "CLOSE SELL :\n"
+		BUY_MSG		= "LONG :\n"
+		SELL_MSG 	= "SHORT :\n"
+		CLSEB_MSG 	= "CLOSE LONG :\n"
+		CLSES_MSG 	= "CLOSE SHORT :\n"
 	else :
 		MSG		= "<html><body>SIGNALS " + INTERVAL + "<br/><br/>"
-		BUY_MSG		= "<span style='color:green'><b>BUY :</b></span><br/><ul>"
-		SELL_MSG 	= "<span style='color:red'><b>SELL :</b></span><br/><ul>"
-		CLSEB_MSG 	= "<span style='color:orange'><b>CLOSE BUY :</b></span><br/><ul>"
-		CLSES_MSG 	= "<span style='color:orange'><b>CLOSE SELL :</b></span><br/><ul>"
+		BUY_MSG		= "<span style='color:green'><b>LONG :</b></span><br/><ul>"
+		SELL_MSG 	= "<span style='color:red'><b>SHORT :</b></span><br/><ul>"
+		CLSEB_MSG 	= "<span style='color:orange'><b>CLOSE LONG :</b></span><br/><ul>"
+		CLSES_MSG 	= "<span style='color:orange'><b>CLOSE SHORT :</b></span><br/><ul>"
 
 	buy	= False
 	sell	= False
