@@ -64,6 +64,8 @@ Examples:
 ```bash
 # python3 ./ichimoku.py -m RPD,UNH -i 1h -o TXT
 SIGNALS 1h
+
+LONG :
         - RPD : 100%
 
 SHORT :
@@ -76,7 +78,7 @@ SHORT :
 # python3 ichimoku.py -f eu_stocks.txt -i 1d -o TXT
 SIGNALS 1d
 
-BUY :
+LONG :
         - DHER_DE : 100%
         - BN_PA : 83%
 
