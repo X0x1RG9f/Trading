@@ -1,14 +1,5 @@
 # Trading alerts using Ichimoku Clouds indicator
 
-## Disclaimers
- - Script is intented for alerting only and has no vocation to be used in order to decide what and when to LONG or SHORT actions on markets.
- - Alerts have then to be studied on a case by case basis in order to ensure risk / benefice ratio is worth trying.
-
-## Licensing
- - &copy; Copyright Ludovic COURGNAUD 2020. All Rights Reserved.
- - Permission is granted for personal and Academic use only.
- - Code or portions of code may not be copied or used without appropriate credit given to author.
-
 ## Description
 Automatic EMAIL alerts based on Ichimoku Clouds. For all markets, score (%) is then processed, based on the following conditions:
  -  Price position with Cloud [Under - Above]
@@ -21,6 +12,18 @@ Automatic EMAIL alerts based on Ichimoku Clouds. For all markets, score (%) is t
 Score is then confirmed (or not) removing fake signals and contrary signals. Score is ignored if alert was already sent with equal or inferior score.
 
 Note : Yahoo Finance Data is used in order to process Ichimoku Clouds.
+
+## Disclaimers
+ - Script is intented for alerting only and has no vocation to be used in order to decide what and when to LONG or SHORT actions on markets.
+ - Alerts have then to be studied on a case by case basis in order to ensure risk / benefice ratio is worth trying.
+
+## Licensing
+ - &copy; Copyright Ludovic COURGNAUD 2020. All Rights Reserved.
+ - Permission is granted for personal and Academic use only.
+ - Code or portions of code may not be copied or used without appropriate credit given to author.
+
+## Donations
+[![Donate](https://img.shields.io/badge/Donate-PayPal-green.svg)](https://www.paypal.com/donate?business=S8L7CRH3CVYDG&no_recurring=0&currency_code=EUR)
 
 ## Usage
 ```python
