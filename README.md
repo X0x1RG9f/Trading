@@ -6,7 +6,7 @@
 
 <br />
 <p align="center">
-  <a href="https://firefly-iii.org/">
+  <a href="https://github.com/X0x1RG9f/trading/">
     <img src="/IMAGES/trading.png?raw=true" alt="Ichimoku Alerts" height="100">
   </a>
 </p>
